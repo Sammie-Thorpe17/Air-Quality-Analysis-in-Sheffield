@@ -1,0 +1,90 @@
+# This line of R code was developed using RStudio. It uses ggplot to visualy display PM2.5 changes in Sheffield from 2022 to 2024. 
+# The data was retrieved from OpenAQ.
+# Each visualisation was chosen for the target audience of hypothetical stakeholders on the current trends of air quality. 
+# The graphs were designed using the Grammar of Graphics, ASSERT Framework, accessibility and Ethical implications.
+################
+##IMPORT THE DATA/PACKAGES##
+################
+
+library(ggplot2)
+df_count <- read.csv("Sheff_Count.csv") 
+season_avg22_24 <- read.csv("Sheff_Season_Avg22_24.csv") 
+sheff_all <- read.csv("Sheff_Daily22_24.csv") 
+facet_avg <- read.csv("Sheff_Month_Avg22_24.csv")
+
+################
+##PIE CHART##
+################
+
+ggplot(df_count, aes(x = "", y = n, fill = pm25_level)) + 
+  geom_bar(stat = "identity", width = 0.01, color = "black") +
+  coord_polar(theta = "y") + # map the y axis (danger levels)
+  facet_grid(.~ year) + # different pie charts by year 
+  theme_void() + # simpler theme 
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.1, size = 17), # change the title size and adjust it to the right slightly
+        legend.title = element_text(size = 15), # change the legend size and make it bold
+        legend.text =  element_text(size = 13), 
+        strip.text = element_text(size = 15), # text for years sizes 
+        strip.text.x = element_text(margin = margin(t = 10)), # adjust the title
+        legend.margin = margin(t = -10)) + # adjust the legend
+  labs(title = "Fine Particle Air Pollution Danger Levels Have Decreased From 2022 and 2024", # title
+       fill = expression(PM[2.5] * " Level: ")) + # legend title 
+  scale_fill_viridis_d(option = "viridis", direction = -1, breaks = c("Low", "Medium", "High")) # change the colour and order of the legend
+
+################
+##LINE GRAPH##
+################
+
+ggplot(season_avg22_24, aes(x = season, y = pm25_avg, group = factor(year), colour = factor(year))) +
+  geom_line(linewidth = 1, alpha = 0.6) + # line chart
+  geom_point(size = 2) + # add points between lines 
+  geom_ribbon(aes(ymin = pm25_avg - sd, ymax = pm25_avg + sd, fill = factor(year)), alpha = 0.2, colour = NA) + # add the standard dev. shading
+  scale_colour_manual(values = c("2022" = "blue", "2024" = "orange")) + # change the colour of the lines
+  scale_fill_manual(values = c("2022" = "blue", "2024" = "orange")) + # change the colour of standard dev. shading
+  scale_y_continuous(limits = c(0, 20)) + # change the y-axis range 
+  scale_x_discrete(limits = c("Spring", "Summer", "Autumn", "Winter")) + # change the order of the x-axis
+  theme_bw(base_size = 14) + # change the theme and size of text 
+  labs(title = expression(PM[2.5] * "Trend per Season in 2022 and 2024"), # title
+       x = "Season", 
+       y = expression("Average " * PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+       colour = "Year", 
+       fill = "Year") # legend 
+  
+
+################
+##BOX PLOT##
+################
+
+ggplot(sheff_all, aes(factor(year), pm25_day, fill=factor(year))) +
+  geom_boxplot(alpha = 0.7, outlier.colour = "red", notch = TRUE, notchwidth = 0.9) + # create the boxplot with outliers
+  scale_fill_manual(values = c("blue", "orange")) + # change the colour of the boxes
+  theme_bw() + # change the theme  
+  theme(legend.title = element_text(size = 14), # change the legend title size
+        legend.text = element_text(size = 12)) + # change the legend text size
+  scale_y_continuous(breaks = seq(0, 45, by = 5)) + # change the scale of the y-axis
+  stat_boxplot(geom = "errorbar", width = 0.1) + # edit the error bar to be thicker 
+  labs(title = expression("The Average Total " * PM[2.5] * " Readings in 2022 and 2024"), # title
+       x = "Year",
+       y = expression(PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+       fill = "Year") # legend 
+  
+################
+##FACET BAR CHART##
+################
+
+# change the date coloumn to be readable by R 
+facet_avg$date <- as.Date(facet_avg$date, format = "%d/%m/%Y") 
+facet_avg$date <- factor(format(facet_avg$date, "%b"), levels = month.abb)
+
+# facet bar chart 
+ggplot(facet_avg, aes(x = date, y = pm25_avg)) + 
+  geom_bar(stat = "identity", aes(fill = factor(year)), alpha = 0.9) + # bar chart 
+  scale_fill_manual(values = c("2022" = "blue", "2024" = "orange")) + # change the colour 
+  geom_line(aes(group = 1), colour = "black") + # add an average line 
+  facet_grid(year ~ .) + # add the bar charts into the same graph 
+  theme_bw() + # simpler theme 
+  theme(legend.position = "none") + # remove the legend 
+  labs(title = expression("The Average " * PM[2.5] * " Readings per Month in 2022 and 2024"), # title
+       x = "Month",
+       y = expression("Average " * PM[2.5] * " (" * mu * "g/m"^3 * ")"))
