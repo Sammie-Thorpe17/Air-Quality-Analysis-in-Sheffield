@@ -1,0 +1,155 @@
+################
+##PACKAGES##
+################
+
+library(httr) # GET function 
+library(purrr) # map through pages 
+library(tibble) # create the air quality data frame 
+library(jsonlite) # convert JSON to readable text for R 
+library(lubridate) # recognise ymd_hm
+library(dplyr) # for the mutate and distinct function
+
+################
+##RETRIEVING OPENAQ DATA##
+################
+
+# creating a function to fetch a page
+fetch_page <- function(page_num) { 
+  result <- GET( # get the results from OpenAQ
+    "https://api.openaq.org/v3/sensors/2508/measurements/hourly", # 2508 = Sheffield Devonshire Green
+    query = list( #setting the query parameters 
+      limit = 1000,
+      parameter = "pm25",
+      datetime_from = "2024-01-01T00:00:00Z",
+      datetime_to = "2024-12-31T23:00:00Z",
+      page = page_num # assign and store the page number
+    ),
+    add_headers("X-API-Key" = "my-openaq-API")
+  )
+  content(result, "parsed") # returns the results from a string to a integer (JSON -> structured R list)
+}
+
+# First request to get metadata
+first_page <- fetch_page(1) #get the first 1000 daily measurements
+total_AQ <- first_page$meta$found #tells the total records available for query
+total_pages <- ceiling(total_AQ / 1000) #loop through all the pages and collect the full data
+
+
+# Fetch all pages
+all_AQ_data <- map(1:total_pages, fetch_page) # using the purrr command to loop through all the data found, calling the function to easily get the API 
+all_AQ_results <- map(all_AQ_data, "results") %>% unlist(recursive = FALSE) # loops through all_AQ_data and extracts the results. Then flattens the data into one list per page
+
+# create a table 
+Sheff_AQ_df <- tibble(
+  datetime_from_utc = map_chr(all_AQ_results, ~ .x$period$datetimeFrom$utc %||% NA_character_), #flattens all the results, extracts every result from DateTime if data is missing it returns as N/A rather than crashing
+  datetime_to_utc = map_chr(all_AQ_results, ~ .x$period$datetimeTo$utc %||% NA_character_), # ~ introduces the formula and .x refers to the current element being processed (shorter for function(x))
+  parameter = map_chr(all_AQ_results, ~ .x$parameter$name %||% NA_character_),
+  units = map_chr(all_AQ_results, ~ .x$parameter$units %||% NA_character_),
+  value = map_dbl(all_AQ_results, ~ .x$value %||% NA_real_),
+  avg = map_dbl(all_AQ_results, ~ .x$summary$avg %||% NA_real_))
+
+Sheff_AQ_df$avg[Sheff_AQ_df$avg == 0] <- NA
+
+################
+##RETRIEVING OPENMETEO DATA##
+################
+
+openmeteo_url <- "https://archive-api.open-meteo.com/v1/archive" # retrieving the link from OpenMeteo
+
+openmeteo <- GET(openmeteo_url, query = list(
+  latitude = 53.38,
+  longitude = -1.47, # same location as 2508 = Sheffield Devonshire Green
+  hourly = "rain",
+  start_date = "2024-01-01",
+  end_date   = "2024-12-31",
+  timezone = "UTC"))
+
+# Parse the data
+openmeteo_data <- content(openmeteo, as = "text", encoding = "UTF-8") # encoding allows all characters to be read properly 
+openmeteo_flat <- fromJSON(openmeteo_data, flatten = TRUE) # JSONlite package, converting JSON text to be readable for R
+
+
+
+# create a table 
+rain_df <- data.frame(
+  time = ymd_hm(openmeteo_flat$hourly$time),
+  rain_mm = openmeteo_flat$hourly$rain)  # values are in millimetres (mm)
+
+################
+##JOINING THE DATA##
+################
+
+# Standardize PM2.5 Time
+clean_AQ <- Sheff_AQ_df %>%
+  mutate(
+    time = floor_date(ymd_hms(datetime_from_utc), "hour"), # Create a shared 'time' column
+    pm25 = avg
+  ) %>%
+  select(time, pm25) %>%
+  distinct(time, .keep_all = TRUE) # Remove duplicates
+
+# Standardize the Weather Time
+clean_rain <- rain_df %>%
+  mutate(
+    time = floor_date(time, "hour")
+  ) %>%
+  distinct(time, .keep_all = TRUE) # Remove duplicates
+
+# Merge the data
+master_hourly_df <- inner_join(clean_AQ, clean_rain, by = "time")
+
+################
+###DAILY DATA###
+################
+
+days_pm_df <- master_hourly_df %>%
+  group_by(date = lubridate::floor_date(time, 'day')) %>% # join by day
+  summarize(pm25_day = mean(pm25), rain_day = mean(rain_mm)) # average the data to daily 
+
+# round to 2 decimal places
+days_pm_df <- days_pm_df %>% 
+  mutate(pm25_day = format(round(pm25_day, digits = 2), nsmall = 2)) 
+
+# round to 2 decimal places
+days_pm_df <- days_pm_df %>% 
+  mutate(rain_day = format(round(rain_day, digits = 2), nsmall = 2)) 
+
+################
+##LAGGING THE DATA##
+################ 
+
+lagged_daily <- days_pm_df %>%
+  arrange(date) %>%
+  transmute(
+    date,
+    pm25_day,
+    pm25_lag1 = lag(pm25_day,1), # lag by 1 day 
+    rain_day)
+
+################
+##REMOVING NA ROWS##
+################ 
+
+hourly_final <- na.omit(master_hourly_df) 
+
+# chaning table to numeric so na.omit can work
+days_pm_df <- days_pm_df |>
+  dplyr::mutate(
+    pm25_day = as.numeric(trimws(pm25_day)), # change to numeric and remove any white space in characters 
+    rain_day = as.numeric(trimws(rain_day)))
+days_final <- na.omit(days_pm_df)
+
+# chaning table to numeric so na.omit can work
+lagged_daily <- lagged_daily |>
+  dplyr::mutate(
+    pm25_day = as.numeric(trimws(pm25_day)), # change to numeric and remove any white space in characters 
+    rain_day = as.numeric(trimws(rain_day)))
+lagged_day_final <- na.omit(lagged_daily)
+
+################
+##CREATE CSV FILES##
+################ 
+
+write.csv(hourly_final, "Sheff_Hourly2024 - Sheet1.csv", row.names = FALSE) 
+write.csv(days_final, "Sheff_Daily2024 - Sheet1.csv", row.names = FALSE) 
+write.csv(lagged_day_final, "Sheff_Lag_PM25_Rain - Sheet1.csv", row.names = FALSE) 
