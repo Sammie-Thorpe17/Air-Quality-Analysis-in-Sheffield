@@ -1,0 +1,84 @@
+################
+##IMPORT THE DATA##
+################
+
+sheff_hourly <- read.csv("Sheff_Hourly2024 - Sheet1.csv")
+sheff_daily <- read.csv("Sheff_Daily2024 - Sheet1.csv")
+sheff_lag <- read.csv("Sheff_Lag_PM25_Rain - Sheet1.csv") 
+
+################
+##DESCRIPTIVE STATISTICS##
+################
+
+library(pastecs) # package for stat.desc()
+
+# Hourly
+stat.desc(sheff_hourly$rain_mm) 
+stat.desc(sheff_hourly$pm25)
+
+# Daily
+stat.desc(sheff_daily$rain_day)
+stat.desc(sheff_daily$pm25_day)
+
+################
+##HISTOGRAM##
+################
+
+hist(sheff_hourly$pm25, col = "orange", # histogram and change the colour 
+     xlab = expression(PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+     ylab = "Hours",
+     main = "The Quantity of Air Pollution in 2024/Hour")
+lines(density(sheff_hourly$pm25), col = 'red', lwd = 1) # adding the Kernel Density Estimate
+
+hist(sheff_hourly$rain_mm, col = "lightblue", # histogram and change the colour 
+     xlab = "Rain (mm)",
+     ylab = "Hours",
+     main = "The Quantity of Rain in 2024/Hour")
+lines(density(sheff_hourly$rain_mm), col = 'red', lwd = 1) # adding the Kernel Density Estimate
+
+hist(sheff_daily$pm25_day, col = "orange", # histogram and change the colour 
+     xlab = expression(PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+     ylab = "Days",
+     main = "The Quantity of Air Pollution in 2024/Day") 
+lines(density(sheff_daily$pm25_day), col = 'red', lwd = 1) # adding the Kernel Density Estimate
+
+hist(sheff_daily$rain_day, col = "lightblue", # histogram and change the colour 
+     xlab = "Rain (mm)",
+     ylab = "Days",
+     main = "The Quantity of Rain in 2024/Day") 
+lines(density(sheff_daily$rain_day), col = 'red', lwd = 1) # adding the Kernel Density Estimate
+
+################
+##CORRELATION##
+################
+
+# Spearman
+cor.test(sheff_hourly$rain_mm, sheff_hourly$pm25, method ="spearman", exact = FALSE)
+cor.test(sheff_daily$rain_day, sheff_daily$pm25_day, method ="spearman", exact = FALSE)
+cor.test(sheff_lag$rain_mm, sheff_lag$pm25_lag1, method ="spearman", exact = FALSE)
+
+################
+##GAM##
+################
+library(mgcv) # package for gam()
+
+gam_model <- gam(pm25 ~ s(rain_mm), data = sheff_hourly) # run the generalised additive model for hourly variables 
+summary(gam_model) # generalised additive model results for hourly variables
+plot(gam_model, # plot the generalised additive results for hourly variables
+     xlab = "Rain (mm)",
+     ylab = expression("≈ Rain (mm) Effect on " * PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+     main = "Hourly")
+
+gam_model2 <- gam(pm25_day ~ s(rain_day), data = sheff_daily) # run the generalised additive model for daily variables 
+summary(gam_model2) # generalised additive model results for daily variables
+plot(gam_model2, # plot the generalised additive results for daily variables
+     xlab = "Rain (mm)",
+     ylab = expression("≈ Rain (mm) Effect on " * PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+     main = "Daily")
+
+gam_model3 <- gam(pm25_lag1 ~ s(rain_mm), data = sheff_lag) # run the generalised additive model for daily (lag) variables 
+summary(gam_model3) # generalised additive model results for daily (lag) variables
+plot(gam_model3, # plot the generalised additive results for daily (lag) variables
+     xlab = "Rain (mm)",
+     ylab = expression("≈ Rain (mm) Effect on " * PM[2.5] * " (" * mu * "g/m"^3 * ")"),
+     main = "Daily (Lag)")
