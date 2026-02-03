@@ -2,6 +2,7 @@
 # The data was retrieved from OpenAQ.
 # Each visualisation was chosen for the target audience of hypothetical stakeholders on the current trends of air quality. 
 # The graphs were designed using the Grammar of Graphics, ASSERT Framework, accessibility and Ethical implications.
+# Some files were editied using Excel, the clean csv files are on this link: https://drive.google.com/drive/folders/1si5OSWGtAA_NjA3J79c0MmblNq74YNvT?usp=sharing 
 ################
 ##IMPORT THE DATA/PACKAGES##
 ################
